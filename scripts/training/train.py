@@ -503,6 +503,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
 @use_yaml_config(param_name="config")
 def main(
     training_data_paths: str,
+    eval_data_paths: str,
     probability: Optional[str] = None,
     context_length: int = 512,
     prediction_length: int = 64,
@@ -563,6 +564,14 @@ def main(
     training_data_paths = ast.literal_eval(training_data_paths)
     assert isinstance(training_data_paths, list)
 
+    
+    ###TODO####
+    
+    eval_data_paths = ast.literal_eval(eval_data_paths)
+    assert isinstance(eval_data_paths, list)
+    ##########
+    
+    
     if isinstance(probability, str):
         probability = ast.literal_eval(probability)
     elif probability is None:
@@ -600,6 +609,26 @@ def main(
         )
         for data_path in training_data_paths
     ]
+    
+    log_on_main(
+        f"Loading and filtering {len(eval_data_paths)} datasets "
+        f"for eval: {eval_data_paths}",
+        logger,
+    )
+    ####TODO####
+    eval_datasets = [
+        Filter(
+            partial(
+                has_enough_observations,
+                min_length=min_past + prediction_length,
+                max_missing_prop=max_missing_prop,
+            ),
+            FileDataset(path=Path(data_path), freq="h"),
+        )
+        for data_path in eval_data_paths
+    ]
+    
+    ###########
 
     log_on_main("Initializing model", logger)
 
@@ -645,6 +674,25 @@ def main(
         mode="training",
     ).shuffle(shuffle_buffer_length=shuffle_buffer_length)
 
+
+    ####TODO####
+
+    shuffled_eval_dataset = ChronosDataset(
+        datasets=eval_datasets,
+        probabilities=probability,
+        tokenizer=chronos_config.create_tokenizer(),
+        context_length=context_length,
+        prediction_length=prediction_length,
+        min_past=min_past,
+        model_type=model_type,
+        imputation_method=LastValueImputation() if model_type == "causal" else None,
+        mode="validation",
+    ).shuffle(shuffle_buffer_length=shuffle_buffer_length)
+
+
+    ###########
+
+
     # Define training args
     training_args = TrainingArguments(
         output_dir=str(output_dir),
@@ -666,6 +714,9 @@ def main(
         torch_compile=torch_compile,
         ddp_find_unused_parameters=False,
         remove_unused_columns=False,
+        do_eval=True,
+        evaluation_strategy="steps",
+        eval_steps=log_steps,
     )
 
     # Create Trainer instance
@@ -673,6 +724,7 @@ def main(
         model=model,
         args=training_args,
         train_dataset=shuffled_train_dataset,
+        eval_dataset=shuffled_eval_dataset,
     )
     log_on_main("Training", logger)
 
