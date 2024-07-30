@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import sys
+import chronos 
 import json
 import itertools
 import random
@@ -27,7 +28,7 @@ from transformers import (
     AutoConfig,
     T5Config,
     Trainer,
-    TrainingArguments,
+    TrainingArguments,#导入的类只明白接口和功能就行
 )
 import accelerate
 import gluonts
@@ -75,6 +76,7 @@ def get_training_job_info() -> Dict:
 
     # CUDA info
     job_info["cuda_available"] = torch.cuda.is_available()
+    #job_info["cuda_available"] = False
     if torch.cuda.is_available():
         job_info["device_count"] = torch.cuda.device_count()
 
@@ -278,7 +280,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         In training mode, data will be sampled from each of the original datasets
         with these probabilities.
     tokenizer
-        Tokenizer to be used to turn sequences of real numbers into token IDs.
+        ✨Tokenizer to be used to turn sequences of real numbers into token IDs.
     context_length
         Samples context will be limited to this length.
     prediction_length
@@ -393,11 +395,11 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
 
     def to_hf_format(self, entry: dict) -> dict:
         past_target = torch.tensor(entry["past_target"]).unsqueeze(0)
-        input_ids, attention_mask, scale = self.tokenizer.context_input_transform(
+        input_ids, attention_mask, scale,mean,std = self.tokenizer.context_input_transform(
             past_target
         )
         future_target = torch.tensor(entry["future_target"]).unsqueeze(0)
-        labels, labels_mask = self.tokenizer.label_input_transform(future_target, scale)
+        labels, labels_mask = self.tokenizer.label_input_transform(future_target, scale,mean,std)
         labels[labels_mask == 0] = -100
 
         if self.model_type == "causal":
@@ -440,7 +442,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             labels = input_ids.clone()
             input_ids[~attention_mask] = self.tokenizer.config.pad_token_id
             labels[~attention_mask] = -100
-
+        
         return {
             "input_ids": input_ids.squeeze(0),
             "attention_mask": attention_mask.squeeze(0),
@@ -503,7 +505,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
 @use_yaml_config(param_name="config")
 def main(
     training_data_paths: str,
-    eval_data_paths: str,
+    eval_data_paths:str,
     probability: Optional[str] = None,
     context_length: int = 512,
     prediction_length: int = 64,
@@ -557,21 +559,14 @@ def main(
         seed = random.randint(0, 2**32)
 
     log_on_main(f"Using SEED: {seed}", logger)
-    transformers.set_seed(seed=seed)
+    transformers.set_seed(seed=seed)#先不管具体有什么用，设置了seed总是好的
 
     raw_training_config = deepcopy(locals())
     output_dir = Path(output_dir)
     training_data_paths = ast.literal_eval(training_data_paths)
     assert isinstance(training_data_paths, list)
-
-    
-    ###TODO####
-    
     eval_data_paths = ast.literal_eval(eval_data_paths)
     assert isinstance(eval_data_paths, list)
-    ##########
-    
-    
     if isinstance(probability, str):
         probability = ast.literal_eval(probability)
     elif probability is None:
@@ -602,7 +597,11 @@ def main(
         f"for training: {training_data_paths}",
         logger,
     )
-
+    log_on_main(
+        f"Loading and filtering {len(eval_data_paths)} datasets "
+        f"for eval: {eval_data_paths}",
+        logger,
+    )
     log_on_main(
         f"Mixing probabilities: {probability}",
         logger,
@@ -619,13 +618,6 @@ def main(
         )
         for data_path in training_data_paths
     ]
-    
-    log_on_main(
-        f"Loading and filtering {len(eval_data_paths)} datasets "
-        f"for eval: {eval_data_paths}",
-        logger,
-    )
-    ####TODO####
     eval_datasets = [
         Filter(
             partial(
@@ -637,11 +629,9 @@ def main(
         )
         for data_path in eval_data_paths
     ]
-    
-    ###########
-
     log_on_main("Initializing model", logger)
 
+    # Laod t5 model
     model = load_model(
         model_id=model_id,
         model_type=model_type,
@@ -683,10 +673,6 @@ def main(
         imputation_method=LastValueImputation() if model_type == "causal" else None,
         mode="training",
     ).shuffle(shuffle_buffer_length=shuffle_buffer_length)
-
-
-    ####TODO####
-
     shuffled_eval_dataset = ChronosDataset(
         datasets=eval_datasets,
         probabilities=probability,
@@ -697,12 +683,7 @@ def main(
         model_type=model_type,
         imputation_method=LastValueImputation() if model_type == "causal" else None,
         mode="validation",
-    ).shuffle(shuffle_buffer_length=shuffle_buffer_length)
-
-
-    ###########
-
-
+    )
     # Define training args
     training_args = TrainingArguments(
         output_dir=str(output_dir),
@@ -724,8 +705,8 @@ def main(
         torch_compile=torch_compile,
         ddp_find_unused_parameters=False,
         remove_unused_columns=False,
-        do_eval=True,
-        evaluation_strategy="steps",
+        do_eval= True,
+        evaluation_strategy= "steps",
         eval_steps=log_steps,
     )
 
@@ -733,11 +714,11 @@ def main(
     trainer = Trainer(
         model=model,
         args=training_args,
-        train_dataset=shuffled_train_dataset,
+        train_dataset=shuffled_train_dataset, #tokenizer is in dataset
         eval_dataset=shuffled_eval_dataset,
     )
     log_on_main("Training", logger)
-
+    #封装好的train
     trainer.train()
 
     if is_main_process():

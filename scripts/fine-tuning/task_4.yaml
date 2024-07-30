@@ -11,7 +11,7 @@ max_steps: 2_000
 save_steps: 1_000
 log_steps: 100
 per_device_train_batch_size: 64
-learning_rate: 0.001
+learning_rate: 0.0001
 optim: adamw_torch_fused
 num_samples: 5
 shuffle_buffer_length: 100_000
@@ -20,7 +20,7 @@ model_id: ./checkpoints/chronos-t5-small
 model_type: seq2seq
 random_init: false
 tie_embeddings: true
-output_dir: ./output/ETTh2/
+output_dir: ./output/ETTh2/24/
 tf32: false
 torch_compile: false
 tokenizer_class: "MeanScaleUniformBins"

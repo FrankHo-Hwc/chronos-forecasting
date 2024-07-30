@@ -18,7 +18,7 @@ shuffle_buffer_length: 100_000
 gradient_accumulation_steps: 1
 model_id: ./checkpoints/chronos-t5-small
 model_type: seq2seq
-random_init: fasle
+random_init: false
 tie_embeddings: true
 output_dir: ./output/weather/
 tf32: false

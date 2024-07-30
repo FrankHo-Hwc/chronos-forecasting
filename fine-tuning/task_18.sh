@@ -1,0 +1,17 @@
+#!/bin/sh
+#data: only a name to name a file...
+accelerate launch ./performance_evaluation/forecast_toy.py \
+  --model chronos_small \
+  --data custom \
+  --data_path traffic.csv \
+  --root_path  ./data/ \
+  --checkpoints ./output/traffic/run-2/checkpoint-final \
+  --seq_len 512 \
+  --label_len 0 \
+  --token_len 96  \
+  --pred_len 96 \
+  --batch_size 32 >  ./logs/test_results/fine-tuning/traffic_512_96_test.log
+
+
+
+

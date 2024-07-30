@@ -20,7 +20,7 @@ model_id: ./checkpoints/chronos-t5-small
 model_type: seq2seq
 random_init: false
 tie_embeddings: true
-output_dir: ./output/ETTm2/
+output_dir: ./output/ETTm2/64/
 tf32: false
 torch_compile: false
 tokenizer_class: "MeanScaleUniformBins"
