@@ -165,5 +165,5 @@ dataset
 checkpoints
 datasets
 data
-logs/
+logs
 output/
